@@ -4,7 +4,7 @@
 // --------------------------------------------------------------------------------------
 
 // Binaries that have XML documentation (in a corresponding generated XML file)
-let referenceBinaries = [ "Hopac.Core.dll"; "Hopac.dll" ]
+let referenceBinaries = [ "Hopac.dll" ]
 // Web site location for the generated documentation
 let website = "/Hopac"
 
@@ -29,6 +29,9 @@ let info =
 #r "FSharp.Literate.dll"
 #r "FSharp.CodeFormat.dll"
 #r "FSharp.MetadataFormat.dll"
+//#r "System.Runtime"
+//#r "System.Threading.Tasks"
+//#r @"..\..\bin\Hopac.Core.dll"
 open Fake
 open System.IO
 open Fake.FileHelper
@@ -69,8 +72,12 @@ let buildReference () =
   CleanDir (output @@ "reference")
   for lib in referenceBinaries do
     MetadataFormat.Generate
-      ( bin @@ lib, output @@ "reference", layoutRoots, 
-        parameters = ("root", root)::info )
+      ( bin @@ lib, 
+        output @@ "reference", 
+        layoutRoots, 
+        parameters = ("root", root)::info,
+        assemblyReferences = ["Hopac.Core.dll"; "System.Runtime.dll"; "System.Threading.dll"; "System.Threading.Tasks.dll"])
+        //libDirs = [ bin ] )
 
 // Build documentation from `fsx` and `md` files in `docs/content`
 let buildDocumentation () =
@@ -84,4 +91,4 @@ let buildDocumentation () =
 // Generate
 copyFiles()
 buildDocumentation()
-//buildReference() 
+buildReference() 
