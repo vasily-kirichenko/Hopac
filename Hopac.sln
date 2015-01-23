@@ -80,6 +80,20 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".nuget", ".nuget", "{C2B858
 		.nuget\packages.config = .nuget\packages.config
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Doc", "Doc", "{B32DD562-CA2D-47D2-B66E-D2556AEE3924}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "content", "content", "{1032E023-1CC9-4619-B7C8-216AEC72D218}"
+	ProjectSection(SolutionItems) = preProject
+		Doc\content\Actors.fsx = Doc\content\Actors.fsx
+		Doc\content\index.fsx = Doc\content\index.fsx
+		Doc\content\Programming.fsx = Doc\content\Programming.fsx
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{434767C3-EEB2-484C-A9F6-BE082145CCE2}"
+	ProjectSection(SolutionItems) = preProject
+		Doc\tools\generate.fsx = Doc\tools\generate.fsx
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -196,5 +210,7 @@ Global
 		{8AE348BF-62A1-4B04-986D-56FF9B137570} = {43B5134E-89E6-411E-A492-6FDA8BD441FB}
 		{7A2F0650-E5F6-4DFB-975D-C9F8B10FF314} = {24B2ECA5-6A25-48E3-942E-D7559D4F8C3B}
 		{4E4BE430-1137-43D1-97EF-206BD6ACB2C1} = {43B5134E-89E6-411E-A492-6FDA8BD441F9}
+		{1032E023-1CC9-4619-B7C8-216AEC72D218} = {B32DD562-CA2D-47D2-B66E-D2556AEE3924}
+		{434767C3-EEB2-484C-A9F6-BE082145CCE2} = {B32DD562-CA2D-47D2-B66E-D2556AEE3924}
 	EndGlobalSection
 EndGlobal
