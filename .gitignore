@@ -10,3 +10,4 @@ obj
 packages
 nuget
 build_PRIVATE.cmd
+Doc/output/*
