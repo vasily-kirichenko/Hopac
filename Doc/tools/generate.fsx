@@ -21,7 +21,7 @@ let info =
 // --------------------------------------------------------------------------------------
 
 #I "../../packages/FSharp.Formatting.2.6.3/lib/net40"
-#I "../../packages/RazorEngine.3.5.1/lib/net40/"
+//#I "../../packages/RazorEngine.3.5.1/lib/net40/"
 #r @"..\..\packages\FSharp.Compiler.Service.0.0.81\lib\net45\FSharp.Compiler.Service.dll"
 #r "../../packages/Microsoft.AspNet.Razor.3.0.0/lib/net45/System.Web.Razor.dll"
 #r "../../packages/FAKE/tools/FakeLib.dll"
@@ -91,4 +91,4 @@ let buildDocumentation () =
 // Generate
 copyFiles()
 buildDocumentation()
-buildReference() 
+//buildReference() 
