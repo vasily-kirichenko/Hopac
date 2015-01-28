@@ -91,6 +91,6 @@ let buildDocumentation () =
 
 // Generate
 copyFiles()
-//buildDocumentation()
+buildDocumentation()
 buildReference() 
  
