@@ -53,6 +53,26 @@ module Native =
         | None -> ()
 
      
+        seq {1 .. nJobs}
+        |> Seq.map (fun _ ->
+           let rnd = Random ()
+           Job.forUpTo 1 nUpdates <| fun _ ->
+             let c = rnd.Next (0, nCells)
+             get cells.[c] >>= fun x ->
+             put cells.[c] (x+1))
+        |> Job.conIgnore
+    }
+    let d = timer.Elapsed
+    for i=0 to nCells-1 do
+      cells.[i] <- Unchecked.defaultof<_>
+    printf "%8.5f s to %d c * %d p * %d u\n"
+     d.TotalSeconds nCells nJobs nUpdates
+
+     
+//type Cell<'a>
+//val cell: 'a -> Job<Cell<'a>>
+//val get: Cell<'a> -> Job<'a>
+//val put: Cell<'a> -> 'a -> Job<unit>
 (**
 The `cell` function creates a
 job[*](http://hopac.github.io/Hopac/Hopac.html#def:type%20Hopac.Job)

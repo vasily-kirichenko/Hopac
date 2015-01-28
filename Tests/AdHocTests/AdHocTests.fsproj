@@ -81,7 +81,6 @@
     </ProjectReference>
     <Reference Include="FsCheck">
       <HintPath>..\..\packages\FsCheck.1.0.4\lib\net45\FsCheck.dll</HintPath>
-      <Private>True</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -91,10 +90,6 @@
       <Project>{92AC6198-FA63-4458-AFEC-2BFBB2B0D914}</Project>
     </ProjectReference>
     <Reference Include="FSharp.Core, Version=4.3.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="System.Web.Razor">
-      <HintPath>..\..\packages\Microsoft.AspNet.Razor.3.0.0\lib\net45\System.Web.Razor.dll</HintPath>
       <Private>True</Private>
     </Reference>
   </ItemGroup>
