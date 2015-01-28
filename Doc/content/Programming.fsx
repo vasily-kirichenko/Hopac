@@ -20,10 +20,39 @@ reproduce the same example with Hopac.
 
 Here is the signature for our updatable storage cells:
 *)
-type Cell<'a>
-val cell: 'a -> Job<Cell<'a>>
-val get: Cell<'a> -> Job<'a>
-val put: Cell<'a> -> 'a -> Job<unit>
+
+sprintf "string"
+sprintf "string %s" 1
+System.Console.WriteLine("string")
+let a, b = sprintf "dddd", 1
+
+module Native = 
+    open System.Threading
+    open System.Diagnostics
+    
+    let run n = 
+        printf "Native: "
+        let timer = Stopwatch.StartNew()
+        let selfCh = new AutoResetEvent(false)
+        
+        let rec proc n (selfCh: AutoResetEvent) (toCh: AutoResetEvent) = 
+            if n = 0 then toCh.Set() |> ignore
+            else 
+                let childCh = new AutoResetEvent(false)
+                let child = Thread(ThreadStart(fun () -> proc (n - 1) childCh toCh), 512)
+                child.Start()
+                childCh.Set() |> ignore
+            selfCh.WaitOne() |> ignore
+            selfCh.Dispose()
+        proc n selfCh selfCh
+        let d = timer.Elapsed
+        printf "%9.0f ops/s - %fs\n" (float n / d.TotalSeconds) d.TotalSeconds
+        let mutable mutableVar = Some 1
+        match mutableVar with
+        | Some _ -> ()
+        | None -> ()
+
+     
 (**
 The `cell` function creates a
 job[*](http://hopac.github.io/Hopac/Hopac.html#def:type%20Hopac.Job)

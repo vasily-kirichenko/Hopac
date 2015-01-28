@@ -31,6 +31,7 @@ let info =
 #r "FSharp.MetadataFormat.dll"
 //#r "System.Runtime"
 //#r "System.Threading.Tasks"
+//#r "System.Threading"
 //#r @"..\..\bin\Hopac.Core.dll"
 open Fake
 open System.IO
@@ -76,8 +77,8 @@ let buildReference () =
         output @@ "reference", 
         layoutRoots, 
         parameters = ("root", root)::info,
-        assemblyReferences = ["Hopac.Core.dll"; "System.Runtime.dll"; "System.Threading.dll"; "System.Threading.Tasks.dll"])
-        //libDirs = [ bin ] )
+        //assemblyReferences = ["Hopac.Core.dll"; "System.Runtime.dll"; "System.Threading.dll"; "System.Threading.Tasks.dll"])
+        libDirs = [ bin; "." ] )
 
 // Build documentation from `fsx` and `md` files in `docs/content`
 let buildDocumentation () =
@@ -90,5 +91,6 @@ let buildDocumentation () =
 
 // Generate
 copyFiles()
-buildDocumentation()
+//buildDocumentation()
 buildReference() 
+ 
