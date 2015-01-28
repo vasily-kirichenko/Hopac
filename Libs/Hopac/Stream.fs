@@ -14,7 +14,6 @@ open Timer.Global
 
 module Stream =
   let inline (<|>*) x y = x <|>* y :> Alt<_>
-  let inline (>>=*) x y = x >>=* y :> Alt<_>
   let inline (|>>*) x y = x |>>* y :> Alt<_>
   let inline memo x = Promise.Now.delay x :> Alt<_>
   let inline start x = Job.Global.start x
@@ -27,8 +26,8 @@ module Stream =
   let inline (|Nothing|Just|) (b, x) = if b then Just x else Nothing
 
   type Cons<'x> =
-    | Nil
     | Cons of Value: 'x * Next: Alt<Cons<'x>>
+    | Nil
 
   type Stream<'x> = Alt<Cons<'x>>
 
@@ -86,8 +85,8 @@ module Stream =
 
   let rec onCloseJob (uJ: Job<unit>) xs =
     Job.tryIn xs
-       <| function Nil -> uJ >>% Nil
-                 | Cons (x, xs) -> upcast cons x (onCloseJob uJ xs)
+       <| function Cons (x, xs) -> cons x (onCloseJob uJ xs) :> Job<_>
+                 | Nil -> uJ >>% Nil
        <| fun e -> uJ >>! e
     |> memo
   let onCloseFun u2u xs = onCloseJob (Job.thunk u2u) xs
@@ -125,8 +124,8 @@ module Stream =
       xs
     let rec loop xs =
       Job.tryIn xs
-       <| function Nil -> Job.unit << iter <| fun xS -> xS.OnCompleted ()
-                 | Cons (x, xs) -> iter (fun xS -> xS.OnNext x); loop xs
+       <| function Cons (x, xs) -> iter (fun xS -> xS.OnNext x); loop xs
+                 | Nil -> Job.unit << iter <| fun xS -> xS.OnCompleted ()
        <| fun e -> Job.unit << iter <| fun xS -> xS.OnError e
     loop xs |> start
     {new IObservable<'x> with
@@ -140,14 +139,14 @@ module Stream =
 
   let once xJ = xJ |>>* fun x -> Cons (x, nil)
 
-  let inline mapfC c = function Nil -> Nil | Cons (x, xs) -> c x xs
+  let inline mapfC c = function Cons (x, xs) -> c x xs | Nil -> Nil 
   let inline mapfc c xs = xs |>>? mapfC c
   let inline mapfcm c xs = mapfc c xs |> memo
 
   let inline mapnc n (c: _ -> _ -> #Job<_>) xs =
     xs >>=? function Cons (x, xs) -> c x xs | _ -> n
   let inline mapC (c: _ -> _ -> #Job<_>) =
-    function Nil -> nil :> Job<_> | Cons (x, xs) -> upcast c x xs
+    function Cons (x, xs) -> c x xs :> Job<_> | Nil -> nil :> Job<_>
   let inline mapc c xs = xs >>=? mapC c
   let inline mapcm c xs = mapc c xs |> memo
 
@@ -163,9 +162,11 @@ module Stream =
     match xO with None -> mapc choose' xOs | Some x -> cons x (choose xOs)
   and choose xOs = mapcm choose' xOs
 
-  let filterJob x2bJ xs =
-    chooseJob (fun x -> x2bJ x |>> fun b -> if b then Some x else None) xs
-  let filterFun x2b xs = filterJob (x2b >> Job.result) xs
+  let rec fj' p x xs =
+    p x >>= fun b -> if b then cons x (filterJob p xs) else mapc (fj' p) xs
+  and filterJob p xs = mapcm (fj' p) xs
+  let rec ff' p x xs = if p x then cons x (filterFun p xs) else mapc (ff' p) xs
+  and filterFun x2b xs = mapcm (ff' x2b) xs
 
   let rec mapJob x2yJ xs =
     mapcm (fun x xs -> x2yJ x |>> fun y -> Cons (y, mapJob x2yJ xs)) xs
@@ -202,9 +203,38 @@ module Stream =
   let rec catch (e2xs: _ -> #Stream<_>) (xs: Stream<_>) =
     Job.tryIn xs (mapC (fun x xs -> cons x (catch e2xs xs))) e2xs |> memo
 
+  // Sampler.regular
+  // Sampler.debounce
+  // Sampler.throttle
+  // Sampler.fromStream
+  // Sampler.fromJob
+
+  module Sampler =
+    // debounce
+    let restart (timeSpan: TimeSpan) : Alt<_> =
+      timeOut timeSpan
+    // throttle
+    let retain (timeSpan: TimeSpan) : Alt<_> =
+      let timeout = timeOut timeSpan
+      let req = Ch<_> ()
+      let res = Ch<_> ()
+      let rec idle () =
+        req >>= fun () -> busy (memo timeout)
+      and busy timeout =
+        (timeout >>=? fun () -> res <-- () >>= idle) <|>?
+        (req >>=? fun () -> busy timeout)
+      idle () |> Job.Global.server
+      Alt.guard (req <-+ () >>% res)
+
+  let rec sampleGot0 ts xs =
+    mapc (fun _ ts -> sampleGot0 ts xs) ts <|>? mapc (sampleGot1 ts) xs
+  and sampleGot1 ts x xs =
+    mapfc (fun _ ts -> Cons (x, sample ts xs)) ts <|>? mapc (sampleGot1 ts) xs
+  and sample ts xs = sampleGot0 ts xs |> memo
+
   let rec debounceGot1 timeout x xs =
     (timeout |>>? fun _ -> Cons (x, debounce timeout xs)) <|>?
-    (xs >>=? function Nil -> one x | Cons (x, xs) -> debounceGot1 timeout x xs)
+    (xs >>=? function Cons (x, xs) -> debounceGot1 timeout x xs | Nil -> one x)
   and debounce timeout xs = mapcm (debounceGot1 timeout) xs
 
   let rec throttleGot1 timeout timer x xs =
@@ -231,21 +261,53 @@ module Stream =
   let scanFromFun s f xs = scanFun f s xs
 
   let rec foldJob f s xs =
-    xs >>= function Nil -> Job.result s
-                  | Cons (x, xs) -> f s x >>= fun s -> foldJob f s xs
+    xs >>= function Cons (x, xs) -> f s x >>= fun s -> foldJob f s xs
+                  | Nil -> Job.result s
   let foldFun f s xs = foldJob (fun s x -> f s x |> Job.result) s xs
   let foldFromJob s f xs = foldJob f s xs
   let foldFromFun s f xs = foldFun f s xs
 
-  let count xs = foldFun (fun s _ -> s+1) 0 xs |> memo
+  let count xs = foldFun (fun s _ -> s+1L) 0L xs
 
   let rec iterJob (f: _ -> #Job<unit>) xs =
-    xs >>= function Nil -> Job.unit () | Cons (x, xs) -> f x >>. iterJob f xs
+    xs >>= function Cons (x, xs) -> f x >>. iterJob f xs | Nil -> Job.unit ()
   let iterFun (x2u: _ -> unit) xs = iterJob (x2u >> Job.result) xs
 
   let toSeq xs = Job.delay <| fun () ->
     let ys = ResizeArray<_>()
     iterFun ys.Add xs >>% ys
+
+  type Evt<'x> =
+    | Value of 'x
+    | Completed
+    | Error of exn
+
+  let pull xs onValue onCompleted onError =
+    let cmd = Ch<int> ()
+    let rec off xs = cmd >>= on xs
+    and on xs n =
+      (cmd >>=? fun d -> let n = n+d in if n = 0 then off xs else on xs n) <|>?
+      (Alt.tryIn xs <| function Cons (x, xs) -> onValue x >>. on xs n
+                              | Nil -> onCompleted () >>. Job.foreverIgnore cmd
+                    <| fun e -> onError e >>. Job.foreverIgnore cmd) :> Job<_>
+    off xs |> start
+    (cmd <-- 1, cmd <-- -1)
+
+  let shift t (xs: Stream<'x>) : Stream<'x> =
+    let es = Mailbox<Alt<Evt<'x>>> ()
+    let (inc, dec) =
+      pull xs <| fun x -> t >>% Value x |> Promise.start >>= fun p -> es <<-+ upcast p
+              <| fun () -> es <<-+ Alt.always Completed
+              <| fun e -> es <<-+ Alt.always (Error e)
+    let es = inc >>. es
+    let rec ds () =
+      es >>=* fun evt ->
+      Job.tryIn evt
+       <| function Value x -> dec >>. cons x (ds ())
+                 | Completed -> nil :> Job<_>
+                 | Error e -> error e :> Job<_>
+       <| fun e -> dec >>. error e
+    ds () :> Alt<_>
 
   let delayEach job xs = mapJob (fun x -> job >>% x) xs
 
@@ -255,9 +317,8 @@ module Stream =
   let rec beforeEach yJ xs =
     memo (yJ >>. mapfc (fun x xs -> Cons (x, beforeEach yJ xs)) xs)
 
-  let distinctByJob x2kJ xs = delay <| fun () ->
-    let ks = HashSet<_>() in filterJob (x2kJ >> Job.map ks.Add) xs
-  let distinctByFun x2k xs = distinctByJob (Job.lift x2k) xs
+  let distinctByJob x2kJ xs = filterJob (x2kJ >> Job.map (HashSet<_>().Add)) xs
+  let distinctByFun x2k xs = filterFun (x2k >> HashSet<_>().Add) xs
 
   let rec ducwj eqJ x' x xs =
     eqJ x' x >>= function true -> mapc (ducwj eqJ x) xs
@@ -293,10 +354,6 @@ module Stream =
       (let rec serve ss =
          Job.tryIn ss
           <| function
-              | Nil ->
-                key2br.Values
-                |> Seq.iterJob (fun i -> i <-= Nil) >>.
-                (!main <-= Nil) >>% Nil
               | Cons (s, ss) ->
                 Job.tryIn (Job.delay <| fun () -> keyOf s)
                  <| fun k ->
@@ -315,6 +372,10 @@ module Stream =
                          let ki = (k, wrapBranch k (i :> Stream<_>))
                          m <-= Cons (ki, i') >>. newK serve ss ki i'
                  <| raised
+              | Nil ->
+                key2br.Values
+                |> Seq.iterJob (fun i -> i <-= Nil) >>.
+                (!main <-= Nil) >>% Nil
           <| raised
        baton >>=? serve)
     and wrapBranch k xs =
@@ -331,30 +392,28 @@ module Stream =
     !main |> wrapMain
   let groupByFun keyOf ss = groupByJob (keyOf >> Job.result) ss
 
-  let rec sampleGot0 ts xs =
-    mapc (fun _ ts -> sampleGot0 ts xs) ts <|>? mapc (sampleGot1 ts) xs
-  and sampleGot1 ts x xs =
-    mapfc (fun _ ts -> Cons (x, sample ts xs)) ts <|>? mapc (sampleGot1 ts) xs
-  and sample ts xs = sampleGot0 ts xs |> memo
-
-  let rec skip' n xs = if 0 < n then mapc (fun _ -> skip' (n-1)) xs else xs
-  let skip n xs = if n < 0 then failwith "skip: n < 0" else skip' n xs |> memo
+  let rec skip' n xs = if 0L < n then mapc (fun _ -> skip' (n-1L)) xs else xs
+  let skip n xs = if n < 0L then failwith "skip: n < 0L" else skip' n xs |> memo
 
   let rec take' n xs =
-    if 0 < n then mapfcm (fun x xs -> Cons (x, take' (n-1) xs)) xs else nil
-  let take n xs = if n < 0 then failwith "take: n < 0" else take' n xs
+    if 0L < n then mapfcm (fun x xs -> Cons (x, take' (n-1L) xs)) xs else nil
+  let take n xs = if n < 0L then failwith "take: n < 0L" else take' n xs
 
-  let inline mapcnm f (xs: Stream<_>) =
-    xs >>=* function Nil -> failwith "empty" | Cons (x, xs) -> f x xs
-
-  let head xs = mapcnm (fun x _ -> Job.result x) xs
-  let tail xs = skip 1 xs
-  let single xs =
-    mapcnm (fun x xs -> xs |>> function Nil -> x | _ -> failwith "single") xs
-  let last xs = mapcnm (foldFun (fun _ x -> x)) xs
-
-  let rec ts' = function Nil -> Nil | Cons (_, xs) -> Cons (xs, xs |>>* ts')
+  let head xs = mapfcm (fun x _ -> Cons (x, nil)) xs
+  let tail (s: Stream<_>) = memo (s >>= function Cons (_, t) -> t | Nil -> nil)
+  let rec ts' = function Cons (_, xs) -> Cons (xs, xs |>>* ts') | Nil -> Nil
   let tails xs = cons xs (xs |>>* ts')
+
+  let last (s: Stream<_>) = memo << Job.delay <| fun () ->
+    let rec lp (r: Job<_>) s =
+      Job.tryIn s (function Cons (_, t) -> lp s t | Nil -> r) (fun _ -> r)
+    lp s s
+  let init (s: Stream<_>) = memo << Job.delay <| fun () ->
+    let rec lp x s =
+      Job.tryIn s (function Cons (h, t) -> cons x (memo (lp h t)) | Nil -> nil)
+       (fun _ -> nil)
+    s >>= function Nil -> nil :> Job<_> | Cons (x, s) -> lp x s
+  let inits xs = scanFun (fun n _ -> n+1L) 0L xs |> mapFun (fun n -> take n xs)
 
   let rec unfoldJob f s =
     f s |>>* function None -> Nil | Some (x, s) -> Cons (x, unfoldJob f s)
@@ -375,25 +434,32 @@ module Stream =
 
   let afterTimeSpan ts = once (timeOut ts)
 
-  let values (xs: Stream<_>) = Job.delay <| fun () ->
-    let out = Ch<_> ()
-    Job.iterateServer xs (fun xs ->
-    Job.tryIn xs
-     <| function Nil -> Job.abort ()
-               | Cons (x, xs) -> out <-- Choice1Of2 x >>% xs
-     <| fun e -> out <-- Choice2Of2 e >>= Job.abort) >>%
-    (out |>>? function Choice1Of2 x -> x | Choice2Of2 e -> raise e)
+  let values (xs: Stream<'x>) : Alt<'x> =
+    let vs = Ch<_>()
+    let (inc, dec) =
+      pull xs (Choice1Of2 >> Ch.send vs) Job.unit (Choice2Of2 >> Ch.send vs)
+    Alt.withNack <| fun nack ->
+    Job.start (nack >>. dec) >>. inc >>%
+    (vs >>=? function Choice1Of2 x -> dec >>% x | Choice2Of2 e -> raise e)
 
-  let rec appendWhileFun u2b xs = delay <| fun () ->
-    if u2b () then append xs (appendWhileFun u2b xs) else nil
+  let rec joinWhileFun join u2b xs = delay <| fun () ->
+    if u2b () then join (xs, joinWhileFun join u2b xs) else nil
 
-  type Builder () =
-    member inline this.Bind (xs, x2ys: _ -> Stream<_>) = appendMap x2ys xs
-    member inline this.Combine (xs1, xs2) = append xs1 xs2
+  type [<AbstractClass>] Builder () =
+    member inline this.Bind (xs, x2ys: _ -> Stream<_>) =
+      mapJoin (fun x y -> this.Join (x, y)) x2ys xs
+    member inline this.Combine (xs1, xs2) = this.Join (xs1, xs2)
     member inline this.Delay (u2xs: unit -> Stream<'x>) = delay u2xs
     member inline this.Zero () = nil
-    member inline this.For (xs, x2ys: _ -> Stream<_>) = appendMap x2ys (ofSeq xs)
+    member inline this.For (xs, x2ys: _ -> Stream<_>) =
+      this.Bind (ofSeq xs, x2ys)
     member inline this.TryWith (xs, e2xs: _ -> Stream<_>) = catch e2xs xs
-    member this.While (u2b, xs) = appendWhileFun u2b xs
+    member this.While (u2b, xs) = joinWhileFun this.Join u2b xs
     member inline this.Yield (x) = one x
     member inline this.YieldFrom (xs: Stream<_>) = xs
+    abstract Join: Stream<'x> * Stream<'x> -> Stream<'x>
+
+  let ambed = {new Builder () with member this.Join (xs, ys) = amb xs ys}
+  let appended = {new Builder () with member this.Join (xs, ys) = append xs ys}
+  let merged = {new Builder () with member this.Join (xs, ys) = merge xs ys}
+  let switched = {new Builder () with member this.Join (xs, ys) = switch xs ys}

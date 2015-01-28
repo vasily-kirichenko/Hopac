@@ -1,4 +1,4 @@
-﻿// Copyright (C) by Vesa Karvonen
+// Copyright (C) by Vesa Karvonen
 
 namespace Hopac
 
@@ -8,10 +8,10 @@ open System
 module Stream =
   /// Represents a point in a non-deterministic stream of values.
   type Cons<'x> =
-    /// Communicates the end of the stream.
-    | Nil
     /// Communicates a value and the remainder of the stream.
     | Cons of Value: 'x * Next: Alt<Cons<'x>>
+    /// Communicates the end of the stream.
+    | Nil
 
   /// Represents a non-deterministic stream of values called a choice stream.
 #if DOC
@@ -19,10 +19,13 @@ module Stream =
   /// Choice streams can be used in ways similar to Rx observable sequences.
   /// However, the underlying implementations of choice streams and observable
   /// sequences are almost polar opposites: choice streams are pull based while
-  /// obserable sequences are push based.  Probably the most notable advantage
-  /// of observable sequences over choice streams is that observables support
-  /// disposables via their subscription protocol.  Choice streams do not have a
-  /// subscription protocol and cannot support disposables in the same manner.
+  /// obserable sequences are push based.
+  ///
+  /// Probably the most notable advantage of observable sequences over choice
+  /// streams is that observables support disposables via their subscription
+  /// protocol.  Choice streams do not have a subscription protocol and cannot
+  /// support disposables in the same manner.
+  ///
   /// On the other hand, choice streams offer several advantages over observable
   /// sequences:
   ///
@@ -47,19 +50,64 @@ module Stream =
   /// synchronous.
   ///
   /// - Choice streams allow values to be generated both lazily in response to
-  /// consumers and eagerly in response to producers.  Observable sequences can
-  /// only be generated eagerly in response to producers.  For example, the
-  /// `afterEach` and `beforeEach` combinators cannot be implemented for
-  /// observable sequences, because observables do not have a protocol for
-  /// requesting elements one by one.
+  /// consumers, see the fibonacci example in `delay`, and eagerly in response
+  /// to producers, see `shift`.  Observable sequences can only be generated
+  /// eagerly in response to producers.  The fibonacci example cannot be
+  /// expressed using observable sequences, because an observable sequence would
+  /// enumerate the fibonacci sequence eagerly, and combinators like `afterEach`
+  /// and `beforeEach` cannot be implemented for observable sequences, because
+  /// observables do not have a protocol for requesting elements one by one.
   ///
   /// All of the above advantages are strongly related and result from the pull
   /// based nature of choice streams.
+  ///
+  /// While the most common operations are very easy to implement on choice
+  /// streams, some operations perhaps require more intricate programming than
+  /// with push based models.  For example, `groupByFun` and `shift`, that
+  /// corresponds to `Delay` in Rx, are non-trivial, although both
+  /// implementations are actually much shorter than their .Net Rx counterparts.
 #endif
   type Stream<'x> = Alt<Cons<'x>>
 
   /// Represents an imperative source of a stream of values called a stream
   /// source.
+#if DOC
+  ///
+  /// A basic use for a stream source would be to produce a stream in response
+  /// to events from a GUI.  For example, given a GUI button, one could write
+  ///
+  ///> let buttonClickSrc = Stream.Src.create ()
+  ///> button.Click.Add (ignore >> Stream.Src.value buttonClickSrc >> start)
+  ///
+  /// to produce a stream of button clicks.  The `Stream.Src.tap` function
+  /// returns the generated stream, which can then be manipulated using stream
+  /// combinators.
+  ///
+  /// Here is a silly example.  We could write a stream combinator that counts
+  /// the number of events within a given timeout period:
+  ///
+  ///> let eventsWithin timeout xs =
+  ///>   let inc = xs |> Stream.mapFun (fun _ -> +1)
+  ///>   let dec = xs |> Stream.mapFun (fun _ -> -1) |> Stream.shift timeout
+  ///>   Stream.merge inc dec
+  ///>   |> Stream.scanFromFun 0 (+)
+  ///
+  /// Given two stream sources for buttons, the following program would then
+  /// print "That was fast!" whenever both buttons are clicked within 500ms.
+  ///
+  ///> let t500ms = timeOutMillis 500
+  ///> let n1s = Stream.Src.tap button1ClickSrc |> eventsWithin t500ms
+  ///> let n2s = Stream.Src.tap button2ClickSrc |> eventsWithin t500ms
+  ///> Stream.combineLatest n1s n2s
+  ///> |> Stream.chooseFun (fun (n1, n2) ->
+  ///>    if n1 > 0 && n2 > 0 then Some () else None)
+  ///> |> Stream.iterFun (fun () -> printfn "That was fast!")
+  ///> |> queue
+  ///
+  /// Note that there are no special hidden mechanisms involved in the
+  /// implementation of stream sources.  You can easily implement similar
+  /// imperative mechanisms outside of the stream library.
+#endif
   type Src<'x>
 
   /// Operations on stream sources.
@@ -68,7 +116,8 @@ module Stream =
     val create: unit -> Src<'x>
 
     /// Appends a new value to the end of the generated stream.  This operation
-    /// is atomic and can be safely used from multiple parallel jobs.
+    /// is atomic and non-blocking and can be safely used from multiple parallel
+    /// jobs.
     val value: Src<'x> -> 'x -> Job<unit>
 
     /// Terminates the stream with an error.  The given exception is raised in
@@ -85,6 +134,17 @@ module Stream =
 
   /// Represents a mutable variable, called a stream variable, that generates a
   /// stream of values as a side-effect.
+#if DOC
+  ///
+  /// The difference between a stream variable and a stream source is that a
+  /// stream variable cannot be closed and always has a value.  Stream variables
+  /// are one way to represent state, or the model, manipulated by a program
+  /// using streams.
+  ///
+  /// Note that there are no special hidden mechanisms involved in the
+  /// implementation of stream variables.  You can easily implement similar
+  /// imperative mechanisms outside of the stream library.
+#endif
   type Var<'x>
 
   /// Operations on stream variables.
@@ -129,10 +189,20 @@ module Stream =
   /// streams.  For example,
   ///
   ///> let fibs: Stream<BigInteger> =
-  ///>   let rec lp fib0 fib1 = cons fib0 << delay <| fun () -> lp fib1 (fib0+fib1)
+  ///>   let rec lp f0 f1 = cons f0 << delay <| fun () -> lp f1 (f0 + f1)
   ///>   lp 0I 1I
   ///
   /// is the stream of all fibonacci numbers.
+  ///
+  /// The above `fibs` streams produces results lazily, but can do so at a
+  /// relatively fast rate when it is being pulled eagerly.  The following
+  ///
+  ///> let slowFibs =
+  ///>   fibs
+  ///>   |> afterEach (timeOutMillis 1000)
+  ///
+  /// stream would produce the fibonacci sequence with at most one element per
+  /// second.
 #endif
   val inline delay: (unit -> #Stream<'x>) -> Stream<'x>
 
@@ -248,9 +318,11 @@ module Stream =
   /// Reference implementation:
   ///
   ///> let rec mapJob x2yJ xs =
-  ///>   xs >>=* function Nil -> nil
-  ///>                  | Cons (x, xs) ->
-  ///>                    x2yJ x |>>? fun y -> Cons (y, mapJob x2yJ xs)
+  ///>   memo (xs >>= function Nil -> nil
+  ///>                       | Cons (x, xs) ->
+  ///>                         x2yJ x |>>? fun y -> Cons (y, mapJob x2yJ xs))
+  ///
+  /// Above, `memo` is `fun x -> Promise.Now.delay x :> Alt<_>`.
   val mapJob: ('x -> #Job<'y>) -> Stream<'x> -> Stream<'y>
 
   /// Returns a stream that produces elements passed through the given function
@@ -269,7 +341,7 @@ module Stream =
   ///
   /// For example,
   ///
-  ///> zip xs (skip 1 xs)
+  ///> zip xs (tail xs)
   ///
   /// is a stream of consecutive pairs from the stream `xs`.
 #endif
@@ -333,6 +405,12 @@ module Stream =
   /// the second stream produces no elements.  As soon as the second stream
   /// produces an element, the returned stream only produces elements from the
   /// second stream.  See also: `switchMap`.
+#if DOC
+  ///
+  ///>  first: a b    c   d
+  ///> second:      1  2 3  4 ...
+  ///> output: a b  1  2 3  4 ...
+#endif
   val switch: Stream<'x> -> Stream<'x> -> Stream<'x>
 
   /// Joins all the streams in the given stream of streams together with the
@@ -367,13 +445,15 @@ module Stream =
 
   /// `skip n xs` returns a stream without the first `n` elements of the given
   /// stream.  If the given stream is shorter than `n`, then the returned stream
-  /// will be empty.
-  val skip: int -> Stream<'x> -> Stream<'x>
+  /// will be empty.  Note that if `n` is non-negative, then `append (take n xs)
+  /// (skip n xs)` is equivalent to `xs`.
+  val skip: int64 -> Stream<'x> -> Stream<'x>
 
   /// `take n` returns a stream that has the first `n` elements of the given
   /// stream.  If the given stream is shorter than `n`, then `take n` is the
-  /// identity function.
-  val take: int -> Stream<'x> -> Stream<'x>
+  /// identity function.  Note that if `n` is non-negative, then `append (take n
+  /// xs) (skip n xs)` is equivalent to `xs`.
+  val take: int64 -> Stream<'x> -> Stream<'x>
 
   /// Preliminary and subject to change.
   val skipUntil: Alt<_> -> Stream<'x> -> Stream<'x>
@@ -407,30 +487,37 @@ module Stream =
   /// followed by a `tick`.  Excess elements from both streams are skipped.  In
   /// other words, `elem` followed by `elem` and `tick` followed by `tick` is
   /// skipped.
+#if DOC
+  ///
+  ///>  elems: 1  2  3        4 5 6  7
+  ///>  ticks:     x    x    x    x    x
+  ///> output:     2    3         6    7
+#endif
   val sample: ticks: Stream<_> -> elems: Stream<'x> -> Stream<'x>
 
   /// Returns a stream that produces elements from the given stream so that an
   /// element is produced after the given timeout unless a new element is
   /// produced by the given stream in which case the timeout is restarted.  Note
   /// that if the given stream produces elements more frequently than the
-  /// timeout, the returned stream never produces any elements.
+  /// timeout, the returned stream never produces any elements.  See also:
+  /// `throttle`.
 #if DOC
   ///
-  ///>   input:   1        2 3  4     5 6 7 8 9 ...
-  ///> timeout:   +---x    +-+--+---x +-+-+-+-+-...
-  ///>  output:       1             4
+  ///>   input: 1        2 3  4     5 6 7 8 9 ...
+  ///> timeout: +---x    +-+--+---x +-+-+-+-+-...
+  ///>  output:     1             4
 #endif
   val debounce: timeout: Alt<_> -> Stream<'x> -> Stream<'x>
 
   /// Returns a stream that produces elements from the given stream so that
   /// after an element is produced by the given stream, a timeout is started and
   /// the latest element produced by the stream is produced when the timeout
-  /// expires.
+  /// expires.  See also: `debounce`.
 #if DOC
   ///
-  ///>   input:   1        2 3   4
-  ///> timeout:   +---x    +---x +---x
-  ///>  output:       1        3     4
+  ///>   input: 1        2 3   4
+  ///> timeout: +---x    +---x +---x
+  ///>  output:     1        3     4
 #endif
   val throttle: timeout: Job<_> -> Stream<'x> -> Stream<'x>
 
@@ -438,11 +525,48 @@ module Stream =
   /// of the given pair of streams produces an element.  If one of the streams
   /// produces multiple elements before any elements are produced by the other
   /// stream, then those elements are skipped.  See also: `zip`.
+#if DOC
+  ///
+  ///>  xs: 1 2                  3     4
+  ///>  ys:     a     b     c
+  ///> xys:   (2,a) (2,b) (2,c)(3,c) (4,c)
+#endif
   val combineLatest: Stream<'x> -> Stream<'y> -> Stream<'x * 'y>
 
+  /// Returns a stream that produces the same sequence of elements as the given
+  /// stream, but shifted in time by the given timeout.
+#if DOC
+  ///
+  ///>   input: 1        2 3   4        5
+  ///> timeout: +---x    +---x +---x
+  ///>                     +---x        +---x
+  ///>  output:     1        2 3   4        5
+  ///
+  /// The `shift` operation pulls the input while the stream returned by `shift`
+  /// is being pulled.  If the stream produced by `shift` is not pulled, `shift`
+  /// will stop pulling the input.  This basically means that the timing of the
+  /// output can be determined by an eager producer of the input.
+  ///
+  /// Note that this operation has a fairly complex implementation.  Unless you
+  /// absolutely want this behavior, you might prefer a combinator such as
+  /// `delayEach`.
+#endif
+  val shift: timeout: Job<_> -> Stream<'x> -> Stream<'x>
+
   /// Returns a stream that produces the same elements as the given stream, but
-  /// delays each returned element using the given job.  If the given job fails,
-  /// the returned stream also fails.
+  /// delays each pulled element using the given job.  If the given job fails,
+  /// the returned stream also fails.  See also: `shift`.
+#if DOC
+  ///
+  ///>   input: 1        2 3   4        5
+  ///> timeout: +---x    +---x---x---x  +---x
+  ///>  output:     1        2   3   4      5
+  ///
+  /// In the above, the `input` is considered to be independent of the pull
+  /// operations performed by `delayEach`.  For streams that produce output
+  /// infrequently in relation to the timeout, `delayEach` behaves similarly to
+  /// `shift`.
+#endif
   val delayEach: Job<_> -> Stream<'x> -> Stream<'x>
 
   /// Returns a stream that produces the same elements as the given stream, but
@@ -489,10 +613,10 @@ module Stream =
   /// Preliminary and subject to change.
   val toSeq: Stream<'x> -> Job<ResizeArray<'x>>
 
-  /// Returns a job that creates an alternative through which all the values of
-  /// the stream generated after the point at which the alternative has been
-  /// created can be read.  See also: `indefinitely`.
-  val values: Stream<'x> -> Job<Alt<'x>>
+  /// Creates an alternative through which all the values of the stream
+  /// generated after the point at which the alternative has been created can be
+  /// read.  See also: `indefinitely`.
+  val values: Stream<'x> -> Alt<'x>
 
   /// Preliminary and subject to change.
   val foldJob: ('s -> 'x -> #Job<'s>) -> 's -> Stream<'x> -> Job<'s>
@@ -517,15 +641,22 @@ module Stream =
   ///>                 | Cons (x, xs) -> x2uJ x >>. iterJob x2uJ xs
 #endif
   val iterJob: ('x -> #Job<unit>) -> Stream<'x> -> Job<unit>
-  /// Preliminary and subject to change.
+
+  /// Returns a job that sequentially iterates the given function over the given
+  /// stream.  See also: `iterJob`.
   val iterFun: ('x -> unit) -> Stream<'x> -> Job<unit>
 
-  /// Preliminary and subject to change.
-  val count: Stream<'x> -> Alt<int>
+  /// Returns a job that computes the length of the given stream.
+  val count: Stream<'x> -> Job<int64>
 
-  /// Preliminary and subject to change.
-  val head: Stream<'x> -> Alt<'x>
-  /// Preliminary and subject to change.
+  /// Returns a stream containing only the first element of the given stream.
+  /// If the given stream is closed, the result stream will also be closed.
+  /// Note that `append (head xs) (tail xs)` is equivalent to `xs`.
+  val head: Stream<'x> -> Stream<'x>
+
+  /// Returns a stream just like the given stream except without the first
+  /// element.  If the given stream is closed, the result stream will also be
+  /// closed.  Note that `append (head xs) (tail xs)` is equivalent to `xs`.
   val tail: Stream<'x> -> Stream<'x>
 
   /// Returns a stream of all final segments of the given stream from longest to
@@ -540,14 +671,25 @@ module Stream =
 #endif
   val tails: Stream<'x> -> Stream<Stream<'x>>
 
-  /// Preliminary and subject to change.
-  val last: Stream<'x> -> Alt<'x>
+  /// Returns a stream containing the last element of the given stream.  If the
+  /// given stream is closed, a closed stream is returned.  Note that `append
+  /// (init xs) (last xs)` is equivalent to `xs`.
+  val last: Stream<'x> -> Stream<'x>
 
-  /// Preliminary and subject to change.
-  val single: Stream<'x> -> Alt<'x>
+  /// Returns a stream with all the elements of the given stream except the last
+  /// element.  If the stream is closed, a closed stream is returned.  Note that
+  /// `append (init xs) (last xs)` is equivalent to `xs`.
+  val init: Stream<'x> -> Stream<'x>
 
-  /// Preliminary and subject to change.
-  type Builder =
+  /// Returns a stream of all initial segments of the given stream from shortest
+  /// to longest.
+  val inits: Stream<'x> -> Stream<Stream<'x>>
+
+  /// An experimental generic builder for streams.  The abstract `Join`
+  /// operation needs to be implemented in a derived class.  The `Join`
+  /// operation is then used to implement `Bind`, `Combine`, `For` and `While`
+  /// to get a builder with consistent semantics.
+  type [<AbstractClass>] Builder =
     new: unit -> Builder
     member inline Bind: Stream<'x> * ('x -> Stream<'y>) -> Stream<'y>
     member inline Combine: Stream<'x> * Stream<'x> -> Stream<'x>
@@ -558,3 +700,20 @@ module Stream =
     member While: (unit -> bool) * Stream<'x> -> Stream<'x>
     member inline Yield: 'x -> Stream<'x>
     member inline YieldFrom: Stream<'x> -> Stream<'x>
+    abstract Join: Stream<'x> * Stream<'x> -> Stream<'x>
+
+  /// This builder joins substreams with `amb` to produce a stream with the
+  /// first results.
+  val ambed: Builder
+
+  /// This builder joins substreams with `append` to produce a stream with all
+  /// results in sequential order.
+  val appended: Builder
+
+  /// This builder joins substreams with `merge` to produce a stream with all
+  /// results in completion order.
+  val merged: Builder
+
+  /// This builder joins substreams with `switch` to produce a stream with the
+  /// latest results.
+  val switched: Builder

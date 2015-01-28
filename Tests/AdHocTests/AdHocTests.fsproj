@@ -27,6 +27,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\Debug\AdHocTests.XML</DocumentationFile>
     <Prefer32Bit>true</Prefer32Bit>
+    <OtherFlags>--warnon:1182</OtherFlags>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -38,6 +39,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DocumentationFile>bin\Release\AdHocTests.XML</DocumentationFile>
     <Prefer32Bit>false</Prefer32Bit>
+    <OtherFlags>--warnon:1182</OtherFlags>
   </PropertyGroup>
   <PropertyGroup>
     <MinimumVisualStudioVersion Condition="'$(MinimumVisualStudioVersion)' == ''">11</MinimumVisualStudioVersion>
@@ -64,41 +66,21 @@
   </Target>
   <ItemGroup>
     <None Include="App.config" />
-    <Compile Include="AdHocTests.fs" />
+    <Compile Include="StreamTests.fs" />
     <Content Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Libs\Hopac.Platform.Net\Hopac.Platform.Net.fsproj">
+      <Name>Hopac.Platform.Net</Name>
+      <Project>{b285aeb6-fc96-4212-b7a2-6b73597ce607}</Project>
+      <Private>True</Private>
+    </ProjectReference>
     <ProjectReference Include="..\..\Libs\Hopac\Hopac.fsproj">
       <Name>Hopac</Name>
       <Project>{898D8FE3-C9BE-4115-9A13-7615AF27C048}</Project>
     </ProjectReference>
-    <Reference Include="CSharpFormat">
-      <HintPath>..\..\packages\FSharp.Formatting.2.6.3\lib\net40\CSharpFormat.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="FSharp.CodeFormat">
-      <HintPath>..\..\packages\FSharp.Formatting.2.6.3\lib\net40\FSharp.CodeFormat.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="FSharp.Compiler.Service">
-      <HintPath>..\..\packages\FSharp.Compiler.Service.0.0.81\lib\net45\FSharp.Compiler.Service.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="FSharp.Literate">
-      <HintPath>..\..\packages\FSharp.Formatting.2.6.3\lib\net40\FSharp.Literate.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="FSharp.Markdown">
-      <HintPath>..\..\packages\FSharp.Formatting.2.6.3\lib\net40\FSharp.Markdown.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="FSharp.MetadataFormat">
-      <HintPath>..\..\packages\FSharp.Formatting.2.6.3\lib\net40\FSharp.MetadataFormat.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="mscorlib" />
-    <Reference Include="RazorEngine">
-      <HintPath>..\..\packages\RazorEngine.3.5.1\lib\net45\RazorEngine.dll</HintPath>
+    <Reference Include="FsCheck">
+      <HintPath>..\..\packages\FsCheck.1.0.4\lib\net45\FsCheck.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
@@ -107,10 +89,6 @@
     <ProjectReference Include="..\..\Libs\Hopac.Core\Hopac.Core.csproj">
       <Name>Hopac.Core</Name>
       <Project>{92AC6198-FA63-4458-AFEC-2BFBB2B0D914}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\..\Libs\Hopac.Extra\Hopac.Extra.fsproj">
-      <Name>Hopac.Extra</Name>
-      <Project>{D5780B41-1F30-4057-86E8-47FC90F1FA65}</Project>
     </ProjectReference>
     <Reference Include="FSharp.Core, Version=4.3.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
       <Private>True</Private>
