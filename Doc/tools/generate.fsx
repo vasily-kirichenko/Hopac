@@ -78,7 +78,7 @@ let buildReference () =
         layoutRoots, 
         parameters = ("root", root)::info,
         //assemblyReferences = ["Hopac.Core.dll"; "System.Runtime.dll"; "System.Threading.dll"; "System.Threading.Tasks.dll"])
-        libDirs = [ bin; "." ] )
+        libDirs = [ bin; __SOURCE_DIRECTORY__ ] )
 
 // Build documentation from `fsx` and `md` files in `docs/content`
 let buildDocumentation () =

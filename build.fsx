@@ -126,7 +126,8 @@ Target "Build" (fun _ ->
     projects
     |> List.map (fun project -> project.ProjectFile)
     |> MSBuildRelease "bin" "Rebuild"
-    |> ignore)
+    |> ignore
+    !! @".\bin\FSharp.Core.*" |> DeleteFiles)
 
 // --------------------------------------------------------------------------------------
 // Build NuGet packages
